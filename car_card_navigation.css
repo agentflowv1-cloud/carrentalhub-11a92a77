@@ -1,0 +1,7 @@
+.car-card {
+  display: none;
+}
+
+.car-card.active {
+  display: block;
+}

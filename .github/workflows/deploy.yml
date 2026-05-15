@@ -1,0 +1,104 @@
+name: Deploy to GCP Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  provision:
+    name: Provision Infrastructure
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    outputs:
+      service_url: ${{ steps.tf_out.outputs.service_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Ensure GCS state bucket exists
+        run: |
+          BUCKET="${{ secrets.GCP_PROJECT_ID }}-agentflow-tf-state"
+          gsutil ls gs://$BUCKET 2>/dev/null || \
+          gsutil mb -p ${{ secrets.GCP_PROJECT_ID }} gs://$BUCKET
+
+      - name: Ensure Artifact Registry repository exists
+        run: |
+          REGION="${{ secrets.GCP_REGION || 'us-central1' }}"
+          gcloud artifacts repositories describe agentflow \
+            --location=$REGION --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null || \
+          gcloud artifacts repositories create agentflow \
+            --repository-format=docker \
+            --location=$REGION \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --description="AgentFlow generated application images"
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.GCP_PROJECT_ID }}-agentflow-tf-state" \
+            -backend-config="prefix=carrentalhub-11a92a77"
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve \
+            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var="region=${{ secrets.GCP_REGION || 'us-central1' }}" \
+            -var="service_name=carrentalhub-11a92a77" \
+            -var="image=${{ secrets.GCP_REGION || 'us-central1' }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/agentflow/carrentalhub-11a92a77:${{ github.sha }}"
+
+      - name: Capture service URL
+        id: tf_out
+        run: echo "service_url=$(terraform output -raw service_url)" >> $GITHUB_OUTPUT
+
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    needs: provision
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          REGION="${{ secrets.GCP_REGION || 'us-central1' }}"
+          gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+
+      - name: Build & push image
+        run: |
+          REGION="${{ secrets.GCP_REGION || 'us-central1' }}"
+          IMAGE="$REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/agentflow/carrentalhub-11a92a77"
+          docker build -t $IMAGE:${{ github.sha }} -t $IMAGE:latest .
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          REGION="${{ secrets.GCP_REGION || 'us-central1' }}"
+          IMAGE="$REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/agentflow/carrentalhub-11a92a77:${{ github.sha }}"
+          gcloud run deploy carrentalhub-11a92a77 \
+            --image $IMAGE \
+            --platform managed \
+            --region $REGION \
+            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --allow-unauthenticated \
+            --quiet
+
+      - name: Print service URL
+        run: echo "Deployed to ${{ needs.provision.outputs.service_url }}"

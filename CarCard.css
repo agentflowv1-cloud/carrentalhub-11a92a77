@@ -1,0 +1,47 @@
+.car-card {
+  background-color: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 20px;
+  width: 300px;
+}
+
+.car-card-logo {
+  text-align: center;
+}
+
+.car-card-logo img {
+  height: 50px;
+  width: 50px;
+}
+
+.car-card-info {
+  padding: 20px;
+}
+
+.car-card-model {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.car-card-description {
+  font-size: 18px;
+  color: #666;
+}
+
+.car-card-cta {
+  text-align: center;
+}
+
+.car-card-cta-button {
+  background-color: #4CAF50;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 10px 20px;
+  cursor: pointer;
+}
+
+.car-card-cta-button:hover {
+  background-color: #3e8e41;
+}

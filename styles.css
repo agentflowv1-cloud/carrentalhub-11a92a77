@@ -1,0 +1,1 @@
+body { font-family: Arial, sans-serif; } header { background-color: #f0f0f0; padding: 1em; } nav ul { list-style: none; } nav li { display: inline; margin-right: 20px; } .car-details { margin: 2em; } #car-image { width: 50%; height: auto; }
